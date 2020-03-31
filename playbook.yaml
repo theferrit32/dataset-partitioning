@@ -1,0 +1,62 @@
+- name: Dev Server Setup
+  hosts: all
+  gather_facts: false
+  tasks:
+    # - name: Rescan host key
+    #   local_action: command ssh-keygen -R {{ inventory_hostname }}
+    #- name: update host keys
+    #  known_hosts:
+    #    name: "{{ inventory_hostname }}"
+    #    state: absent
+    - name: Install base packages
+      become: yes
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - htop
+          - bmon
+          - iotop
+          - screen
+          - awscli
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install pip packages
+      pip:
+        executable: pip3
+        name:
+          - numpy
+          - matplotlib
+          - pandas
+          - boto3
+          - pyarrow
+          - s3fs
+
+    # # Install R and R jupyter kernel
+    # - name: Import R public key
+    #   apt_key:
+    #     id: 51716619E084DAB9
+    #     keyserver: keyserver.ubuntu.com
+    #   #command: apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 51716619E084DAB9
+    #   become: yes
+    # - name: Add R Repo
+    #   become: yes
+    #   apt_repository:
+    #     repo: deb https://cloud.r-project.org/bin/linux/ubuntu bionic-cran35/
+    #     state: present
+    # - name: Install R
+    #   become: yes
+    #   apt:
+    #     name: r-base
+    #     update_cache: yes
+    # - name: Create R library
+    #   file:
+    #     path: ~/.local/lib/R
+    #     state: directory
+
+    - name: Add ~/.local/bin to PATH
+      lineinfile:
+        path: ~/.profile
+        line: 'export PATH=~/.local/bin:$PATH'
+
