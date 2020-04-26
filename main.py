@@ -15,7 +15,8 @@ def main(args):
     session = boto3.Session()
 
     s3 = session.resource('s3')
-    s3path = 's3://gbsc-aws-project-annohive-dev-user-krferrit-us-west-1/1000Orig-half2-parquet/'
+    # s3path = 's3://gbsc-aws-project-annohive-dev-user-krferrit-us-west-1/1000Orig-half2-parquet/'
+    s3path = 's3://gbsc-aws-project-annohive-dev-user-krferrit-us-west-1/hg19_Variant_9B_Table_compressed/'
 
     bin_partitioner = ParquetBinPartitioner(s3, s3path)
     output_path = os.path.join('/mnt/ext', 'partitioned-directory/')
