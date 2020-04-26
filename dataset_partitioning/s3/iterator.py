@@ -30,8 +30,9 @@ class S3DirectoryIterator:
     def __iter__(self):
         self.bucket_object_list = []
         for bucket_obj in self.bucket.objects.filter(Prefix=self.prefix):
-            # logger.debug('bucket_obj = ' + str(bucket_obj))
-            self.bucket_object_list.append(bucket_obj)
+            # Exclude the prefix itself (the directory name)
+            if bucket_obj.key != self.prefix:
+                self.bucket_object_list.append(bucket_obj)
         self.bucket_object_list_index = 0
         return self
 
