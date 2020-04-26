@@ -1,6 +1,7 @@
 import os, shutil, binascii
 import gc
 import math
+import json
 # import s3fs
 import pandas as pd
 import pyarrow.parquet as pq
@@ -41,6 +42,65 @@ class ParquetBinPartitioner:
     #     # Loop over partition directories
     #     # Assumes 1-level partition only
     #     merge_partitioned_directory(local_output_directory)
+
+    def _do_partition_csv(self, s3_file_path:str, pos_interval_size:int, local_output_directory:str):
+        logger.info('Reading dtypes file')
+        print(os.getcwd() + '/hg19_9B-pandastypes.json')
+        with open('hg19_9B-pandastypes.json') as f:
+            dtypes = json.load(f)
+
+        logger.info('Loading CSV file ' + s3_file_path)
+
+        df = pd.read_csv(s3_file_path, dtype=dtypes)
+        # df = df.infer_objects()
+
+        # Run GC explicitly to free up previous dataframe if needed
+        gc.collect()
+
+        logger.info('Loaded %d rows to dataframe' % len(df))
+
+        # logger.info('Adding reference_bases and alternate_bases column')
+        # df['reference_bases'] = df['REF']
+        # df['alternate_bases'] = df['ALT']
+        # logger.info('Adding start_position and end_position column')
+        # df['start_position'] = df['POS'].astype('int')
+        # df['end_position'] = (df['start_position'] + df['reference_bases'].str.len()).astype('int')
+        logger.info('Adding bin_id column')
+        df['bin_id'] = (df['start_position'] / pos_interval_size).astype('int')
+
+        # logger.info('Dropping POS, REF, ALT columns')
+        # df.drop(columns=['POS', 'REF', 'ALT'], inplace=True)
+
+        logger.info('Finding unique bin_id values')
+        # Use filtered dataframes in order to reduce memory footprint
+        bin_id_list = df.bin_id.unique()
+        bin_id_list = sorted(bin_id_list)
+        logger.info('Writing bin_id files from %d to %d' % (
+            bin_id_list[0], bin_id_list[-1]
+        ))
+
+        # collapse bin_id list to chunks of particular size
+        chunked_bin_ids = chunk_list(bin_id_list, 100)
+        partition_cols = ['bin_id']
+
+        # Write df to partitioned parquet
+        # df.to_parquet(path=local_output_directory, partition_cols=partition_cols)
+
+        for bin_id_chunk in chunked_bin_ids:
+            wheres = []
+            for bin_id in bin_id_chunk:
+                wheres.append('bin_id == %d' % bin_id)
+            # query = ' or '.join(wheres)
+            bin_df = df.query(' or '.join(wheres))
+            logger.info('Writing parquet file for bin_id=%s' % str(bin_id_chunk))
+            bin_df.to_parquet(path=local_output_directory, partition_cols=partition_cols)
+
+            # Explicitly delete local df
+            del bin_df
+
+        # Explicitly delete object
+        del df
+        gc.collect()
 
 
     def _do_partition_file(self, s3_file_path:str, pos_interval_size:int, local_output_directory:str):
@@ -101,7 +161,7 @@ class ParquetBinPartitioner:
     def partition(self, pos_interval_size:int, local_output_directory:str):
         max_count = math.inf
         count = 0
-        pool_size = 10
+        pool_size = 4
 
         output_file_merge_interval = 4
 
@@ -142,13 +202,12 @@ class ParquetBinPartitioner:
             # there is potentially a memory leak not cleaned up by allowing it
             # to simply be garbage collected
             with Pool(processes=pool_size) as pool:
-                pool.starmap(self._do_partition_file, args)
-                # pool.shutdown(wait=True)
+                pool.starmap(self._do_partition_csv, args)
 
             logger.info('Finished pool execution')
             if count % output_file_merge_interval == 0:
                 logger.info('Merging output directory')
-                merge_partitioned_directory(local_output_directory, processes=12)
+                merge_partitioned_directory(local_output_directory, processes=8)
 
 
     # def partition(self, pos_interval_size, local_output_directory):
